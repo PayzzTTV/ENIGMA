@@ -274,6 +274,29 @@ class Console:
         self._editing = False
         self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self._saved = None
+        self._rows = 0                  # lignes physiques au-dessus du curseur (saisie repliée)
+
+    # -- dessin de l'invite, y compris quand la saisie dépasse la largeur ----
+    @staticmethod
+    def _width(s: str) -> int:
+        w = 0
+        for ch in s:
+            if unicodedata.combining(ch) or ch in _KEEP_CF or ch == "\ufe0f":
+                continue
+            w += 2 if unicodedata.east_asian_width(ch) in "WF" else 1
+        return w
+
+    def _erase(self) -> str:
+        """Séquence qui efface l'invite affichée, même repliée sur plusieurs lignes."""
+        seq = "\r" + (f"\033[{self._rows}A" if self._rows else "") + "\033[J"
+        self._rows = 0
+        return seq
+
+    def _draw(self) -> str:
+        text = self.prompt + self._buf
+        cols = max(shutil.get_terminal_size((80, 24)).columns, 1)
+        self._rows = max(self._width(text) - 1, 0) // cols
+        return text
 
     def __enter__(self):
         if self.interactive:
@@ -295,20 +318,20 @@ class Console:
         if self.interactive:
             with self._lock:
                 self._editing = False
-                sys.stdout.write("\r\033[K")
+                sys.stdout.write(self._erase())
                 sys.stdout.flush()
         return False
 
     def show(self, text: str) -> None:
         with self._lock:
             if self.interactive and self._editing:
-                sys.stdout.write("\r\033[K" + text + "\n" + self.prompt + self._buf)
+                sys.stdout.write(self._erase() + text + "\n" + self._draw())
             else:
                 sys.stdout.write(text + "\n")
             sys.stdout.flush()
 
     def _redraw(self) -> None:
-        sys.stdout.write("\r\033[K" + self.prompt + self._buf)
+        sys.stdout.write(self._erase() + self._draw())
         sys.stdout.flush()
 
     def _read_input(self):
@@ -355,8 +378,8 @@ class Console:
                 raise KeyboardInterrupt
             with self._lock:
                 if ch in "\r\n":
+                    sys.stdout.write(self._erase())
                     line, self._buf, self._editing = self._buf, "", False
-                    sys.stdout.write("\r\033[K")
                     sys.stdout.flush()
                     return line
                 if ch in "\x04\x1a" and not self._buf:     # Ctrl+D / Ctrl+Z
