@@ -1,7 +1,7 @@
 # Enigma Chat
 
 Messagerie en ligne de commande entre deux ordinateurs. Chaque message est chiffré
-avec une Enigma (I, M3 ou M4) puis transporté dans un tunnel SSH.
+avec une Enigma (I, M3, M4, ou M6 fictive à 6 rotors) puis transporté dans un tunnel SSH.
 
 > ⚠️ **La sécurité réelle vient de SSH.** Enigma est cassée depuis 1940 (Bletchley Park) :
 > ici, c'est une couche pédagogique pour voir la machine travailler, pas une protection.
@@ -39,7 +39,7 @@ hostname -I                 # Linux
 whoami                      # votre nom d'utilisateur
 ```
 
-Sur l'invité, sur le même réseau local : `ssh alexis@192.168.1.20`. La connexion
+Sur l'invité, sur le même réseau local : `ssh utilisateur@IP_DE_L_HOTE`. La connexion
 doit réussir, puis tapez `exit`.
 
 ## 3. Utiliser une clé SSH plutôt qu'un mot de passe
@@ -48,13 +48,13 @@ Sur l'invité :
 
 ```bash
 ssh-keygen -t ed25519                 # Entrée pour l'emplacement par défaut
-ssh-copy-id alexis@192.168.1.20       # macOS / Linux
+ssh-copy-id utilisateur@IP_DE_L_HOTE       # macOS / Linux
 ```
 
 Sous **Windows** (PowerShell), `ssh-copy-id` n'existe pas :
 
 ```powershell
-type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh alexis@192.168.1.20 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh utilisateur@IP_DE_L_HOTE "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 ```
 
 **Recommandé** : sur l'hôte, limitez cette clé au seul tunnel du chat (pas de shell).
@@ -64,7 +64,7 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh alexis@192.168.1.20 "mkdir -p ~/
 restrict,port-forwarding,permitopen="127.0.0.1:5555",command="/usr/bin/true" ssh-ed25519 AAAA… bob@pc
 ```
 
-Avec cette ligne, `ssh alexis@ip` rend la main aussitôt sans ouvrir de shell. C'est normal :
+Avec cette ligne, `ssh utilisateur@IP_DE_L_HOTE` rend la main aussitôt sans ouvrir de shell. C'est normal :
 la clé ne sert plus qu'au tunnel vers `127.0.0.1:5555`, et tout autre tunnel est refusé
 (« administratively prohibited »).
 
@@ -76,7 +76,13 @@ Une seule personne génère la clé, puis la transmet à l'autre **à la main**
 ```bash
 python3 enigma_chat.py genkey --model M3 > cle.json                 # mode binaire (défaut)
 python3 enigma_chat.py genkey --model M4 --mode historique > cle.json
+python3 enigma_chat.py genkey --model M6 > cle.json                 # 6 rotors (fictive)
 ```
+
+**M6** est une machine **fictive** à 6 rotors mobiles (6 rotors distincts parmi I–VIII,
+réflecteur B ou C). Elle n'a jamais existé. Son pas généralise les cliquets de l'Enigma,
+double pas compris, et sa clé de message fait 6 lettres. Les deux côtés doivent avoir la
+même version du code (`git pull`).
 
 Le fichier contient le modèle, les rotors, le réflecteur, la Ringstellung, le Steckerbrett
 (10 paires), la Grundstellung et le mode de codage :
@@ -93,22 +99,22 @@ casse pas la suite. Sur le réseau ne circulent que `{"from", "indicator", "ct"}
 
 ## 5. Lancer le chat
 
-**Hôte** (ici le Mac d'Alexis) :
+**Hôte** :
 
 ```bash
-python3 enigma_chat.py serve --name Alexis --key cle.json
+python3 enigma_chat.py serve --name Alice --key cle.json
 ```
 
 **Invité** (macOS / Linux) :
 
 ```bash
-python3 enigma_chat.py connect --name Bob --key cle.json --ssh alexis@192.168.1.20
+python3 enigma_chat.py connect --name Bob --key cle.json --ssh utilisateur@IP_DE_L_HOTE
 ```
 
 **Invité sous Windows** (PowerShell ou Windows Terminal, Python installé depuis python.org) :
 
 ```powershell
-py enigma_chat.py connect --name Bob --key cle.json --ssh alexis@192.168.1.20
+py enigma_chat.py connect --name Bob --key cle.json --ssh utilisateur@IP_DE_L_HOTE
 ```
 
 Options utiles :
