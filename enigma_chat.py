@@ -58,13 +58,14 @@ class DecodeError(ValueError):
 # Clé partagée (cle.json)
 # ---------------------------------------------------------------------------
 def genkey(model: str = "M3", mode: str = "binaire", rng=_rng) -> dict:
-    """Tire une clé du jour aléatoire et valide pour le modèle demandé."""
+    """Tire une clé du jour aléatoire et valide pour le modèle demandé
+    (I, M3, M4, ou M6 : machine fictive à 6 rotors)."""
     if model not in MODELS:
-        raise ChatError(f"modèle inconnu : {model} (I, M3 ou M4)")
+        raise ChatError(f"modèle inconnu : {model} ({', '.join(MODELS)})")
     if mode not in MODES:
         raise ChatError(f"mode inconnu : {mode} (binaire ou historique)")
     spec = MODELS[model]
-    rotors = rng.sample(sorted(spec["rotors"]), 3)
+    rotors = rng.sample(sorted(spec["rotors"]), spec.get("count", 3))
     if spec["fourth"]:
         rotors.insert(0, rng.choice(["Beta", "Gamma"]))
     reflector = rng.choice(sorted(spec["reflectors"] - {"A"}))  # UKW A : retirée en 1937
@@ -99,7 +100,7 @@ def validate_key(raw) -> dict:
         rotors = rotors.split()
     if not isinstance(rotors, list) or not all(isinstance(r, str) for r in rotors):
         raise ChatError("rotors : liste de noms attendue, ex. [\"I\", \"IV\", \"II\"]")
-    n = 4 if MODELS[model]["fourth"] else 3
+    n = 4 if MODELS[model]["fourth"] else MODELS[model].get("count", 3)
     if len(rotors) != n:
         raise ChatError(f"{model} : {n} rotors attendus")
 
@@ -205,7 +206,7 @@ def random_message_key(key: dict) -> str:
 def encrypt_message(key: dict, text: str, message_key: str | None = None) -> tuple[str, str]:
     """Renvoie (indicateur, chiffré).
 
-    1. clé de message : 3 lettres au hasard (4 en M4) ;
+    1. clé de message : une lettre par rotor (3, 4 en M4, 6 en M6) ;
     2. indicateur = clé de message chiffrée en Grundstellung ;
     3. texte chiffré avec les rotors placés sur la clé de message.
     """

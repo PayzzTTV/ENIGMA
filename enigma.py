@@ -64,6 +64,9 @@ MODELS = {
     "I":  {"rotors": {"I", "II", "III", "IV", "V"}, "reflectors": {"A", "B", "C"}, "fourth": False},
     "M3": {"rotors": {"I", "II", "III", "IV", "V", "VI", "VII", "VIII"}, "reflectors": {"B", "C"}, "fourth": False},
     "M4": {"rotors": {"I", "II", "III", "IV", "V", "VI", "VII", "VIII"}, "reflectors": {"B-thin", "C-thin"}, "fourth": True},
+    # Machine FICTIVE (n'a jamais existé) : 6 rotors mobiles, réflecteur épais.
+    # Le pas généralise les cliquets de l'Enigma, double pas compris (voir step()).
+    "M6": {"rotors": {"I", "II", "III", "IV", "V", "VI", "VII", "VIII"}, "reflectors": {"B", "C"}, "fourth": False, "count": 6},
 }
 
 
@@ -167,8 +170,8 @@ class Enigma:
     def __init__(self, rotors, reflector="B", rings=None, positions=None,
                  plugboard="", model=None):
         n = len(rotors)
-        if n not in (3, 4):
-            raise ValueError("3 ou 4 rotors")
+        if n not in (3, 4, 6):
+            raise ValueError("3, 4 (ou 6 pour la M6 fictive) rotors")
         rings = _parse_settings(rings or "A" * n, n)
         positions = _parse_settings(positions or "A" * n, n)
         self.rotors = [Rotor(name, r, p) for name, r, p in zip(rotors, rings, positions)]
@@ -184,9 +187,9 @@ class Enigma:
             if len(names) != 4 or names[0] not in ("Beta", "Gamma"):
                 raise ValueError("M4 : 4 rotors, le premier = Beta ou Gamma")
             names = names[1:]
-        elif len(names) != 3:
-            raise ValueError(f"{model} : 3 rotors")
-        if len(set(names)) != 3 or not set(names) <= m["rotors"]:
+        elif len(names) != m.get("count", 3):
+            raise ValueError(f"{model} : {m.get('count', 3)} rotors")
+        if len(set(names)) != len(names) or not set(names) <= m["rotors"]:
             raise ValueError(f"{model} : rotors non autorisés ou en double {names}")
         if self.reflector.name not in m["reflectors"]:
             raise ValueError(f"{model} : réflecteur {self.reflector.name} non autorisé")
@@ -203,7 +206,23 @@ class Enigma:
             il pousse le rotor gauche ET (par son encoche) le rotor du milieu.
         Ce dernier point produit le « double pas » du rotor du milieu.
         La 4e roue (M4) n'est jamais poussée.
+
+        M6 (fictive, 6 rotors mobiles) : même mécanisme généralisé. Un cliquet
+        entre chaque paire de rotors voisins, tous testés AVANT le mouvement :
+        si le rotor de droite de la paire est sur son encoche, le cliquet pousse
+        le rotor de gauche ET (sauf pour le rotor rapide, qui bouge déjà) le
+        rotor de droite. Avec 3 rotors, cette règle redonne exactement le
+        comportement ci-dessous.
         """
+        if len(self.rotors) == 6:
+            moving = list(reversed(self.rotors))          # droite → gauche
+            to_step = {0}                                 # le rapide avance toujours
+            for i in range(len(moving) - 1):
+                if moving[i].at_notch():
+                    to_step |= {i, i + 1}
+            for i in to_step:
+                moving[i].step()
+            return
         left, mid, right = self.rotors[-3:]
         if mid.at_notch():          # double pas
             mid.step()

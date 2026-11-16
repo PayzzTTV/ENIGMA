@@ -144,5 +144,65 @@ class Properties(unittest.TestCase):
             Enigma(["I", "II", "III"], "B", plugboard="AB AC")  # lettre en double
 
 
+class SixRotorsM6(unittest.TestCase):
+    """Machine fictive M6 : 6 rotors mobiles (gauche → droite I II III IV V VI).
+    Encoches : I=Q, II=E, III=V, IV=J, V=Z, VI=Z/M."""
+    ROT = ["I", "II", "III", "IV", "V", "VI"]
+
+    def after_step(self, start):
+        m = Enigma(self.ROT, "B", positions=start, model="M6")
+        m.step()
+        return m.window
+
+    def test_stepping_cases(self):
+        self.assertEqual(self.after_step("AAAAAA"), "AAAAAB")   # seul le rapide
+        self.assertEqual(self.after_step("AAAAAZ"), "AAAABA")   # report simple
+        self.assertEqual(self.after_step("AAAAZA"), "AAABAB")   # double pas de V
+        self.assertEqual(self.after_step("AAAJZM"), "AABKAN")   # cascade de 3 cliquets
+        self.assertEqual(self.after_step("QEAAAA"), "RFAAAB")   # double pas de II, pousse I
+
+    def test_general_rule_matches_three_rotor_stepping(self):
+        # La règle généralisée de la M6, appliquée à 3 rotors, redonne le pas historique.
+        rng = random.Random(6)
+        for _ in range(3000):
+            rot = rng.sample(["I", "II", "III", "IV", "V", "VI", "VII", "VIII"], 3)
+            pos = [rng.randrange(26) for _ in range(3)]
+            m = Enigma(rot, "B", positions=pos)
+            m.step()
+            # règle M6 à la main, droite → gauche
+            notches = [{a2i(c) for c in ROTORS[r][1]} for r in reversed(rot)]
+            p = list(reversed(pos))
+            move = {0} | {k for i in range(2) if p[i] in notches[i] for k in (i, i + 1)}
+            expected = [(p[i] + (i in move)) % 26 for i in range(3)]
+            self.assertEqual(m.window, "".join(chr(65 + x) for x in reversed(expected)))
+
+    def test_reciprocal_and_no_fixed_point(self):
+        rng = random.Random(1945)
+        for _ in range(100):
+            rot = rng.sample(["I", "II", "III", "IV", "V", "VI", "VII", "VIII"], 6)
+            refl = rng.choice(["B", "C"])
+            letters = [chr(65 + i) for i in rng.sample(range(26), 20)]
+            plugs = " ".join(letters[i] + letters[i + 1] for i in range(0, 20, 2))
+            rings = "".join(chr(65 + rng.randrange(26)) for _ in range(6))
+            pos = "".join(chr(65 + rng.randrange(26)) for _ in range(6))
+            pt = "".join(chr(65 + rng.randrange(26)) for _ in range(300))
+            ct = Enigma(rot, refl, rings, pos, plugs, model="M6").encrypt(pt)
+            self.assertEqual(Enigma(rot, refl, rings, pos, plugs, model="M6").decrypt(ct), pt)
+            self.assertTrue(all(a != b for a, b in zip(pt, ct)), "point fixe trouvé")
+
+    def test_model_validation(self):
+        Enigma(self.ROT, "C", model="M6")
+        with self.assertRaises(ValueError):
+            Enigma(self.ROT[:5] + ["I"], "B", model="M6")         # rotor en double
+        with self.assertRaises(ValueError):
+            Enigma(self.ROT, "B-thin", model="M6")                # réflecteur mince
+        with self.assertRaises(ValueError):
+            Enigma(["Beta"] + self.ROT[:5], "B", model="M6")      # pas de roue Beta
+        with self.assertRaises(ValueError):
+            Enigma(self.ROT, "B", model="M3")                     # M3 = 3 rotors
+        with self.assertRaises(ValueError):
+            Enigma(self.ROT[:5], "B")                             # 5 rotors : refusé
+
+
 if __name__ == "__main__":
     unittest.main()

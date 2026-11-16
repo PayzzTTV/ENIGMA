@@ -74,7 +74,7 @@ class Keys(unittest.TestCase):
         for model in MODELS:
             for _ in range(50):
                 k = ec.genkey(model)
-                n = 4 if model == "M4" else 3
+                n = {"M4": 4, "M6": 6}.get(model, 3)
                 self.assertEqual(len(k["rotors"]), n)
                 self.assertEqual(len(set(k["rotors"])), n)
                 self.assertIn(k["reflector"], MODELS[model]["reflectors"])
@@ -93,6 +93,10 @@ class Keys(unittest.TestCase):
                              capture_output=True, text=True, check=True).stdout
         k = ec.validate_key(json.loads(out))
         self.assertEqual((k["model"], k["mode"]), ("M4", "historique"))
+        out = subprocess.run([sys.executable, CHAT, "genkey", "--model", "M6"],
+                             capture_output=True, text=True, check=True).stdout
+        k = ec.validate_key(json.loads(out))
+        self.assertEqual((k["model"], len(k["rotors"]), len(k["grundstellung"])), ("M6", 6, 6))
 
     def test_invalid_keys_rejected(self):
         good = ec.genkey("M3")
@@ -106,10 +110,10 @@ class Keys(unittest.TestCase):
 
 
 class MessageKeyProcedure(unittest.TestCase):
-    def test_100_random_messages_I_M3_M4(self):
+    def test_100_random_messages_I_M3_M4_M6(self):
         rng = random.Random(1940)
-        for model in ("I", "M3", "M4"):
-            n = 4 if model == "M4" else 3
+        for model in ("I", "M3", "M4", "M6"):
+            n = {"M4": 4, "M6": 6}.get(model, 3)
             for i in range(100):
                 mode = "binaire" if i % 4 else "historique"
                 key = ec.genkey(model, mode)
@@ -130,7 +134,7 @@ class MessageKeyProcedure(unittest.TestCase):
         self.assertEqual(ct, m("QWE").encrypt(ec.encode_text("bonjour", "binaire")))
 
     def test_same_message_twice_gives_two_ciphertexts(self):
-        for model in ("I", "M3", "M4"):
+        for model in ("I", "M3", "M4", "M6"):
             key = ec.genkey(model)
             a = ec.encrypt_message(key, "message identique")
             b = ec.encrypt_message(key, "message identique")
@@ -231,11 +235,12 @@ class Proc:
 
 class ChatHarness(unittest.TestCase):
     """Clé temporaire, port libre, et processus arrêtés en fin de test."""
+    MODEL = "M4"
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.keyfile = os.path.join(self.tmp.name, "cle.json")
-        self.key = ec.genkey("M4")
+        self.key = ec.genkey(self.MODEL)
         with open(self.keyfile, "w") as f:
             json.dump(self.key, f)
         self.port = free_port()
@@ -375,6 +380,20 @@ def ssh_localhost_works():
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
     return r.returncode == 0, r.stderr.strip()
+
+
+class EndToEndM6(ChatHarness):
+    MODEL = "M6"
+
+    def test_chat_with_six_rotors(self):
+        alexis = self.serve("--show-cipher")
+        bob = self.connect_no_ssh()
+        bob.wait_for("Alexis est en ligne")
+        self.assertIn("rotors " + " ".join(self.key["rotors"]), bob.output)
+        bob.send("six rouleaux 🎡")
+        line = alexis.wait_for("] Bob : six rouleaux 🎡")
+        ind = alexis.wait_for("indicateur ").split("indicateur ")[1].split()[0]
+        self.assertEqual(len(ind), 6)                 # clé de message de 6 lettres
 
 
 class OverSSH(ChatHarness):
